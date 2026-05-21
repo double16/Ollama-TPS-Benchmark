@@ -210,6 +210,8 @@ def display_results(stats):
     print("OLLAMA BENCHMARK RESULTS")
     print("="*50)
     print(f"Model: {stats['model']}")
+    if stats['num_ctx']:
+        print(f"Context size: {stats['num_ctx']}")
     print(f"Prompt tokens: {stats['prompt_tokens']}")
     print(f"Completion tokens: {stats['completion_tokens']}")
     print(f"Total tokens: {stats['total_tokens']}")
