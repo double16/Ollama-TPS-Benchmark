@@ -1,11 +1,13 @@
 import argparse
 import json
 import time
+from typing import Any
+
 import requests
 import sys
 import re
 
-def generate_with_ollama(model_name, prompt, base_url):
+def generate_with_ollama(model_name, prompt, base_url, num_ctx = None):
     """
     Generate text from an Ollama model and measure tokens per second.
     
@@ -19,12 +21,15 @@ def generate_with_ollama(model_name, prompt, base_url):
     """
     url = f"{base_url}/api/generate"
     
-    payload = {
+    payload: dict[str, Any] = {
         "model": model_name,
         "prompt": prompt,
         "stream": False
     }
-    
+
+    if num_ctx:
+        payload["options"] = { "num_ctx": num_ctx }
+
     print(f"Sending prompt to Ollama model '{model_name}'...")
     print(f"Prompt: {prompt}\n")
     
@@ -64,6 +69,7 @@ def generate_with_ollama(model_name, prompt, base_url):
         # Create statistics dictionary
         stats = {
             "model": model_name,
+            "num_ctx": num_ctx,
             "prompt_tokens": est_prompt_tokens,
             "completion_tokens": est_completion_tokens,
             "total_tokens": est_total_tokens,
@@ -91,7 +97,7 @@ def generate_with_ollama(model_name, prompt, base_url):
         print(f"Error: {str(e)}")
         sys.exit(1)
 
-def generate_with_ollama_stream(model_name, prompt, base_url):
+def generate_with_ollama_stream(model_name, prompt, base_url, num_ctx = None):
     """
     Generate text from an Ollama model using streaming mode and measure tokens per second.
     This provides more accurate token counting.
@@ -106,12 +112,15 @@ def generate_with_ollama_stream(model_name, prompt, base_url):
     """
     url = f"{base_url}/api/generate"
     
-    payload = {
+    payload: dict[str, Any] = {
         "model": model_name,
         "prompt": prompt,
         "stream": True
     }
-    
+
+    if num_ctx:
+        payload["options"] = { "num_ctx": num_ctx }
+
     print(f"Sending prompt to Ollama model '{model_name}' (streaming mode)...")
     print(f"Prompt: {prompt}\n")
     
@@ -175,6 +184,7 @@ def generate_with_ollama_stream(model_name, prompt, base_url):
         # Create statistics dictionary
         stats = {
             "model": model_name,
+            "num_ctx": num_ctx,
             "prompt_tokens": prompt_eval_count if prompt_eval_count > 0 else len(prompt) // 4 + 1,
             "completion_tokens": token_count,
             "total_tokens": prompt_eval_count + token_count if prompt_eval_count > 0 else token_count + len(prompt) // 4 + 1,
@@ -222,18 +232,21 @@ def main():
     parser.add_argument('--prompt', '-p', default="Tell me a joke", help='Prompt to send to the model (default: "Tell me a joke")')
     parser.add_argument('--url', '-u', default="http://localhost:11434", help='Base URL for the Ollama API (default: http://localhost:11434)')
     parser.add_argument('--stream', '-s', action='store_true', help='Use streaming mode for more accurate token counting')
+    parser.add_argument('--context', '-c', type=int, help='Content size')
     parser.add_argument('--output', '-o', help='Output file for JSON results (optional)')
     
     args = parser.parse_args()
     
     # Remove trailing slash from URL if present
     base_url = args.url.rstrip('/')
-    
+
+    num_ctx = args.context if args.context else None
+
     if args.stream:
-        stats = generate_with_ollama_stream(args.model, args.prompt, base_url)
+        stats = generate_with_ollama_stream(args.model, args.prompt, base_url, num_ctx)
     else:
-        stats = generate_with_ollama(args.model, args.prompt, base_url)
-        
+        stats = generate_with_ollama(args.model, args.prompt, base_url, num_ctx)
+
     display_results(stats)
     
     # Save results to file if specified
