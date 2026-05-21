@@ -49,6 +49,7 @@ This will run a benchmark using the default prompt "Tell me a joke" on the Llama
 | `--url` | `-u` | Base URL for the Ollama API | "http://localhost:11434" |
 | `--stream` | `-s` | Use streaming mode for more accurate token counting | False |
 | `--output` | `-o` | Output file for JSON results (optional) | N/A |
+| `--context` | `-c` | Set the context size (optional) | N/A |
 
 ### Examples
 
