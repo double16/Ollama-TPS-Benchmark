@@ -10,6 +10,7 @@ A Python utility to measure tokens per second (TPS) for Ollama language models. 
 - Handles different Ollama model families and API response formats
 - Configurable prompt and API endpoint
 - Option to export results to JSON for further analysis
+- **Concurrent benchmarking**: Run multiple requests in parallel to measure throughput under load
 
 ## Requirements
 
@@ -50,6 +51,7 @@ This will run a benchmark using the default prompt "Tell me a joke" on the Llama
 | `--stream` | `-s` | Use streaming mode for more accurate token counting | False |
 | `--output` | `-o` | Output file for JSON results (optional) | N/A |
 | `--context` | `-c` | Set the context size (optional) | N/A |
+| `--parallel` | `-P` | Number of concurrent requests to run | 1 |
 
 ### Examples
 
@@ -71,6 +73,11 @@ python benchmark.py --model llama3 --url http://192.168.1.100:11434
 Save results to a JSON file:
 ```bash
 python benchmark.py --model llama2 --output results.json
+```
+
+Run concurrent requests to measure throughput under load:
+```bash
+python benchmark.py --model llama3.2 --parallel 8
 ```
 
 ## Sample Output
