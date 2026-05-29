@@ -1,6 +1,7 @@
 import argparse
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 import requests
@@ -228,6 +229,80 @@ def display_results(stats):
     print(stats['response_text'])
     print("-"*50)
 
+def run_parallel(model_name, prompt, base_url, num_ctx, use_stream, parallel_count):
+    """Run multiple requests in parallel and return aggregate results."""
+    print(f"\nStarting {parallel_count} parallel requests to model '{model_name}'...\n")
+
+    all_stats = []
+    overall_start = time.time()
+
+    with ThreadPoolExecutor(max_workers=parallel_count) as executor:
+        futures = []
+        for i in range(parallel_count):
+            if use_stream:
+                future = executor.submit(generate_with_ollama_stream, model_name, prompt, base_url, num_ctx)
+            else:
+                future = executor.submit(generate_with_ollama, model_name, prompt, base_url, num_ctx)
+            futures.append(future)
+
+        for i, future in enumerate(as_completed(futures)):
+            stats = future.result()
+            all_stats.append(stats)
+            print(f"\n--- Request {i+1} of {parallel_count} completed ---")
+            display_results(stats)
+
+    overall_end = time.time()
+    overall_wall_time = overall_end - overall_start
+
+    total_completion_tokens = sum(s['completion_tokens'] for s in all_stats)
+    total_prompt_tokens = sum(s['prompt_tokens'] for s in all_stats)
+    total_tokens = sum(s['total_tokens'] for s in all_stats)
+    avg_tps = sum(s['tokens_per_second'] for s in all_stats) / len(all_stats)
+    aggregate_tps = total_completion_tokens / overall_wall_time if overall_wall_time > 0 else 0
+    min_time = min(s['processing_time'] for s in all_stats)
+    max_time = max(s['processing_time'] for s in all_stats)
+    avg_time = sum(s['processing_time'] for s in all_stats) / len(all_stats)
+
+    agg_stats = {
+        "model": model_name,
+        "num_ctx": num_ctx,
+        "parallel_requests": parallel_count,
+        "total_prompt_tokens": total_prompt_tokens,
+        "total_completion_tokens": total_completion_tokens,
+        "total_tokens": total_tokens,
+        "overall_wall_time": overall_wall_time,
+        "aggregate_tokens_per_second": aggregate_tps,
+        "average_tokens_per_second": avg_tps,
+        "min_processing_time": min_time,
+        "max_processing_time": max_time,
+        "avg_processing_time": avg_time,
+        "per_request": all_stats,
+    }
+
+    return agg_stats
+
+
+def display_aggregate_results(agg_stats):
+    """Display aggregate parallel benchmark results."""
+    print("\n" + "="*50)
+    print("OLLAMA AGGREGATE BENCHMARK RESULTS")
+    print("="*50)
+    print(f"Model: {agg_stats['model']}")
+    if agg_stats['num_ctx']:
+        print(f"Context size: {agg_stats['num_ctx']}")
+    print(f"Parallel requests: {agg_stats['parallel_requests']}")
+    print(f"Total prompt tokens: {agg_stats['total_prompt_tokens']}")
+    print(f"Total completion tokens: {agg_stats['total_completion_tokens']}")
+    print(f"Total tokens: {agg_stats['total_tokens']}")
+    print(f"Overall wall time: {agg_stats['overall_wall_time']:.4f} seconds")
+    print(f"Aggregate tokens per second: {agg_stats['aggregate_tokens_per_second']:.2f}")
+    print(f"Average tokens per second (per request): {agg_stats['average_tokens_per_second']:.2f}")
+    print(f"Processing time - min: {agg_stats['min_processing_time']:.4f}s, "
+          f"max: {agg_stats['max_processing_time']:.4f}s, "
+          f"avg: {agg_stats['avg_processing_time']:.4f}s")
+    print("="*50)
+
+
 def main():
     parser = argparse.ArgumentParser(description='Benchmark Ollama models for tokens per second')
     parser.add_argument('--model', '-m', required=True, help='Name of the Ollama model')
@@ -235,6 +310,7 @@ def main():
     parser.add_argument('--url', '-u', default="http://localhost:11434", help='Base URL for the Ollama API (default: http://localhost:11434)')
     parser.add_argument('--stream', '-s', action='store_true', help='Use streaming mode for more accurate token counting')
     parser.add_argument('--context', '-c', type=int, help='Content size')
+    parser.add_argument('--parallel', '-P', type=int, default=1, help='Number of parallel requests (default: 1)')
     parser.add_argument('--output', '-o', help='Output file for JSON results (optional)')
     
     args = parser.parse_args()
@@ -244,12 +320,16 @@ def main():
 
     num_ctx = args.context if args.context else None
 
-    if args.stream:
+    if args.parallel > 1:
+        agg_stats = run_parallel(args.model, args.prompt, base_url, num_ctx, args.stream, args.parallel)
+        display_aggregate_results(agg_stats)
+        stats = agg_stats  # Save aggregate for JSON output
+    elif args.stream:
         stats = generate_with_ollama_stream(args.model, args.prompt, base_url, num_ctx)
+        display_results(stats)
     else:
         stats = generate_with_ollama(args.model, args.prompt, base_url, num_ctx)
-
-    display_results(stats)
+        display_results(stats)
     
     # Save results to file if specified
     if args.output:
