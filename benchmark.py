@@ -15,6 +15,67 @@ def get_ollama_version(base_url: str) -> str:
     return requests.get(f"{base_url}/api/version").json().get("version", "unknown")
 
 
+def _list_running_models(base_url: str) -> list[dict]:
+    """Return the list of models currently loaded in Ollama."""
+    try:
+        resp = requests.get(f"{base_url}/api/ps")
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+        # API shape: {"models": [{"name": "model:tag", ...}, ...]}
+        return data.get("models", []) if isinstance(data, dict) else []
+    except Exception:
+        return []
+
+
+def _is_model_loaded(base_url: str, model_name: str) -> bool:
+    """Check via Ollama API if the given model is currently loaded/warmed."""
+    running = _list_running_models(base_url)
+    for m in running:
+        # Prefer 'name'; some responses may use 'model'
+        name = m.get("name") or m.get("model")
+        if name == model_name:
+            return True
+    return False
+
+
+def ensure_model_warmed(base_url: str, model_name: str, *, timeout: float = 120.0, num_ctx: int | None = None) -> None:
+    """
+    Ensure the model is loaded into memory so benchmarking doesn't include load time.
+
+    Strategy:
+    - Check `GET /api/ps`. If present, it's already warmed.
+    - If not loaded, send a tiny generation request (`num_predict: 1`) to trigger load.
+    - Poll `GET /api/ps` until it appears or until `timeout`.
+    """
+    if _is_model_loaded(base_url, model_name):
+        print(f"Model '{model_name}' is already loaded (warmed).")
+        return
+
+    print(f"Warming model '{model_name}' (loading into memory)...")
+
+    # Trigger a minimal generation to force the model to load
+    payload: dict[str, Any] = {
+        "model": model_name,
+        "prompt": " ",  # minimal prompt
+        "stream": False,
+        "options": {"num_predict": 1},  # generate 1 token to minimize work
+    }
+    if num_ctx:
+        # Respect requested context size if provided
+        payload["options"]["num_ctx"] = num_ctx
+
+    try:
+        resp = requests.post(f"{base_url}/api/generate", json=payload, timeout=timeout)
+        if resp.status_code == 404:
+            print(f"Error: Model '{model_name}' not found on this Ollama instance.")
+            sys.exit(1)
+        elif resp.status_code != 200:
+            print(f"Warning: warm-up generate returned {resp.status_code}: {resp.text}")
+    except requests.exceptions.RequestException as e:
+        print(f"Warning: warm-up request failed: {e}")
+
+
 def generate_with_ollama(model_name, prompt, base_url, num_ctx = None):
     """
     Generate text from an Ollama model and measure tokens per second.
@@ -331,6 +392,8 @@ def main():
     base_url = args.url.rstrip('/')
 
     num_ctx = args.context if args.context else None
+
+    ensure_model_warmed(base_url, args.model, timeout=120.0, num_ctx=num_ctx)
 
     if args.parallel > 1:
         agg_stats = run_parallel(args.model, args.prompt, base_url, num_ctx, args.stream, args.parallel)
