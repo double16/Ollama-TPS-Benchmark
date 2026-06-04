@@ -85,6 +85,7 @@ python benchmark.py --model llama3.2 --parallel 8
 ```
 OLLAMA BENCHMARK RESULTS
 ==================================================
+Version: 0.30.2
 Model: gemma3:4b
 Prompt tokens: 4
 Completion tokens: 73

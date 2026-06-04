@@ -2,11 +2,18 @@ import argparse
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
 from typing import Any
 
 import requests
 import sys
 import re
+
+
+@lru_cache
+def get_ollama_version(base_url: str) -> str:
+    return requests.get(f"{base_url}/api/version").json().get("version", "unknown")
+
 
 def generate_with_ollama(model_name, prompt, base_url, num_ctx = None):
     """
@@ -69,6 +76,7 @@ def generate_with_ollama(model_name, prompt, base_url, num_ctx = None):
         
         # Create statistics dictionary
         stats = {
+            "version": get_ollama_version(base_url),
             "model": model_name,
             "num_ctx": num_ctx,
             "prompt_tokens": est_prompt_tokens,
@@ -184,6 +192,7 @@ def generate_with_ollama_stream(model_name, prompt, base_url, num_ctx = None):
         
         # Create statistics dictionary
         stats = {
+            "version": get_ollama_version(base_url),
             "model": model_name,
             "num_ctx": num_ctx,
             "prompt_tokens": prompt_eval_count if prompt_eval_count > 0 else len(prompt) // 4 + 1,
@@ -210,6 +219,7 @@ def display_results(stats):
     print("\n" + "="*50)
     print("OLLAMA BENCHMARK RESULTS")
     print("="*50)
+    print(f"Version: {stats['version']}")
     print(f"Model: {stats['model']}")
     if stats['num_ctx']:
         print(f"Context size: {stats['num_ctx']}")
@@ -264,6 +274,7 @@ def run_parallel(model_name, prompt, base_url, num_ctx, use_stream, parallel_cou
     avg_time = sum(s['processing_time'] for s in all_stats) / len(all_stats)
 
     agg_stats = {
+        "version": get_ollama_version(base_url),
         "model": model_name,
         "num_ctx": num_ctx,
         "parallel_requests": parallel_count,
@@ -287,6 +298,7 @@ def display_aggregate_results(agg_stats):
     print("\n" + "="*50)
     print("OLLAMA AGGREGATE BENCHMARK RESULTS")
     print("="*50)
+    print(f"Version: {agg_stats['version']}")
     print(f"Model: {agg_stats['model']}")
     if agg_stats['num_ctx']:
         print(f"Context size: {agg_stats['num_ctx']}")
